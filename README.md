@@ -15,32 +15,36 @@ Welcome ...
      ```
 2. After installing Miniconda, you can create a new environment using the `environment.yml` file provided in the repository.
 
-```bash
-conda env create -f environment.yml
-```
+   ```bash
+   conda env create -f environment.yml
+   ```
 
 3. Finally, you can activate the environment:
 
-```bash
-conda activate csci566_project
-```
+   ```bash
+   conda activate csci566_project
+   ```
+
+   (**_Note:_** You should see `(csci566_project)` in the terminal prompt after activating the environment)
 
 4. When you are done working, deactivate the environment:
-
-```bash
-conda deactivate
-```
+   ```bash
+   conda deactivate
+   ```
 
 ### Adding Dependencies
 
 1. If you need to add a new dependency, you can install it using the following command:
 
-```bash
-conda install <package_name>
-```
+   ```bash
+   conda install <package_name>
+   ```
 
 2. After installing the package, you can update the `environment.yml` file using:
+   ```bash
+   conda env export > environment.yml
+   ```
 
-```bash
-conda env export > environment.yml
-```
+## Conventional Commits
+
+Please format commit messages according to Angular's [Conventional Commits](https://github.com/angular/angular/blob/22b96b9/CONTRIBUTING.md#-commit-message-guidelines) specification.
