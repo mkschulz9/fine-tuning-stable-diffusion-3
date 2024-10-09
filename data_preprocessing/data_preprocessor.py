@@ -3,10 +3,11 @@ import matplotlib.pyplot as plt
 from PIL import Image
 from io import BytesIO
 from datasets import load_dataset
+from typing import List
 
 class DataPreprocessor:
     def __init__(self, dataset_path: str):
-        """Load dataset from Hugging Face"""
+        """Load dataset from HuggingFace"""
         self.dataset = load_dataset(dataset_path)
         
         print(f"\nDataset loaded: {dataset_path}")
@@ -37,9 +38,10 @@ class DataPreprocessor:
         plt.axis('off')
         plt.show()
         
-    def split_dataset(self, train_size: float = 0.8):
-        """Split dataset into train and test sets"""
+    def remove_columns_split_dataset(self, train_size: float = 0.8, column_names: List[str] = None):
+        """Remove columns & split dataset into train and test sets"""
         print("\n***SPLITTING DATASET***")
+        if column_names != None: self.dataset = self.dataset.remove_columns(column_names)
         shuffled_dataset = self.dataset["train"].shuffle(seed=42)
         dataset_split = shuffled_dataset.train_test_split(train_size=train_size, seed=42)
         print(f"Dataset successfully split: {dataset_split}")
