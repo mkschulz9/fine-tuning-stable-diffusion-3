@@ -47,4 +47,4 @@ Welcome ...
 
 ## Conventional Commits
 
-Please format commit messages according to Angular's [Conventional Commits](https://github.com/angular/angular/blob/22b96b9/CONTRIBUTING.md#-commit-message-guidelines) specification.
+Please format commit messages according to Angular's [Conventional Commits](https://github.com/angular/angular/blob/22b96b9/CONTRIBUTING.md#-commit-message-guidelines).
