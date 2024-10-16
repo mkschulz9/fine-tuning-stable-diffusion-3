@@ -5,6 +5,7 @@ from io import BytesIO
 from datasets import load_dataset
 
 class DataPreprocessor:
+    """Base class for processing HuggingFace datasets"""
     def __init__(self, dataset_id: str):
         """Load dataset from HuggingFace"""
         self.dataset = load_dataset(dataset_id)
@@ -41,8 +42,8 @@ class DataPreprocessor:
         """Remove columns & split dataset into train and test sets"""
         print("\n***REMOVING COLUMNS & SPLITTING DATASET***")
         if column_names != None: self.dataset = self.dataset.remove_columns(column_names)
-        shuffled_dataset = self.dataset["train"].shuffle(seed=42)
-        dataset_split = shuffled_dataset.train_test_split(train_size=train_size, seed=42)
+        shuffled_dataset = self.dataset["train"].shuffle()
+        dataset_split = shuffled_dataset.train_test_split(train_size=train_size)
         print(f"Columns removed and dataset successfully split: {dataset_split}")
                 
         return dataset_split

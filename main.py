@@ -10,8 +10,11 @@ def main():
   dataset_split = data_preprocessor.remove_columns_split_dataset(column_names=["name", "hp", "set_name"])
 
   # load and setup model
-  #model_processor = ModelProcessor("stabilityai/stable-diffusion-3-medium-diffusers")
-  #model_processor.generate_images(dataset_split["test"], num_images=5)
+  model_processor = ModelProcessor("stabilityai/stable-diffusion-3-medium-diffusers")
+  model_processor.generate_save_images(dataset_split["test"], 
+                                       num_images=5, 
+                                       user_emails = ["mkschulz@usc.edu", "alopezlo@usc.edu", "oreynozo@usc.edu"])
+  
   # setup metrics and evaluation loop
   # evaluate and record results
   
