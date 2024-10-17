@@ -92,8 +92,7 @@ class ModelProcessor:
             'name': f'generated_img{idx}.png',
             'parents': [folder_id]
         }
-	media = MediaIoBaseUpload(buf, mimetype='image/png', resumable=True)
-
+        media = MediaIoBaseUpload(buf, mimetype='image/png', resumable=True)
         service.files().create(body=file_metadata,
                                               media_body=media,
                                               fields='id').execute()
