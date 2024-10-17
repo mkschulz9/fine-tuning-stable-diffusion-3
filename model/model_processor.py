@@ -1,10 +1,13 @@
-import os, torch, tqdm
+import os, torch
+from tqdm import tqdm
 from datetime import datetime
 from diffusers import DiffusionPipeline
 from datasets import Dataset
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 from io import BytesIO
+from googleapiclient.http import MediaIoBaseUpload
+
 
 class ModelProcessor:
     """Base class tailored for loading and processing data through HuggingFace diffusion models"""
@@ -27,7 +30,7 @@ class ModelProcessor:
       def gdrive_service():
         """Google Drive authentication and service setup"""
         SCOPES = ["https://www.googleapis.com/auth/drive"]
-        SERVICE_ACCOUNT_FILE = os.getenv("SERVICE_ACCOUNT_FILE")
+        SERVICE_ACCOUNT_FILE = "./model/gdrive-service.json"
 
         credentials = Credentials.from_service_account_file(
             SERVICE_ACCOUNT_FILE, scopes=SCOPES)
@@ -65,7 +68,7 @@ class ModelProcessor:
       str_current_datetime = now.strftime('%Y%m%d_%H%M%S')
       drive_folder_name = f"generated_imgs_{str_current_datetime}"
       
-      self.pipe.eval()
+      #self.pipe.eval()
       service = gdrive_service()
       folder_id = create_and_share_folder(service, drive_folder_name, user_emails)
             
@@ -82,12 +85,15 @@ class ModelProcessor:
                 image = self.pipe(caption).images[0]
             
         buf = BytesIO()
+
         image.save(buf, format='PNG')
         buf.seek(0)
         file_metadata = {
             'name': f'generated_img{idx}.png',
             'parents': [folder_id]
         }
+	media = MediaIoBaseUpload(buf, mimetype='image/png', resumable=True)
+
         service.files().create(body=file_metadata,
-                                              media_body=buf,
+                                              media_body=media,
                                               fields='id').execute()
