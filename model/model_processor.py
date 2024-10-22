@@ -24,10 +24,8 @@ class ModelProcessor:
         # tips if running out of gpu memory: https://huggingface.co/learn/diffusion-course/en/unit3/2#generating-images-from-text
         
         print(f"\nModel loaded: {model_id}")
-        
-    def generate_save_images(self, test_dataset: Dataset, num_images: int = None, user_emails: list[str] = None):
-      """Generate images using model's pipeline on prompts in test dataset and saves images to google drive"""
-      def gdrive_service():
+
+    def gdrive_service(self):
         """Google Drive authentication and service setup"""
         SCOPES = ["https://www.googleapis.com/auth/drive"]
         SERVICE_ACCOUNT_FILE = "./model/gdrive-service.json"
@@ -38,7 +36,7 @@ class ModelProcessor:
         service = build("drive", "v3", credentials=credentials)
         return service
     
-      def create_and_share_folder(service, folder_name, user_emails, parent_id=None):
+    def create_and_share_folder(self, service, folder_name, user_emails, parent_id=None):
         """Create new folder in Google Drive (Cloud Service) and share it with specified users"""
         folder_metadata = {
             'name': folder_name,
@@ -61,16 +59,55 @@ class ModelProcessor:
                 ).execute()
 
         return folder.get('id')
-    
+
+    def generate_single_image(self, caption, seed=None, user_emails: list[str] = None):
+        """Generate images using model's pipeline on prompts in test dataset and saves images to google drive"""
+            
+        print("\n***GENERATING & SAVING IMAGES***")
+        
+        now = datetime.now()
+        str_current_datetime = now.strftime('%Y%m%d_%H%M%S')
+        drive_folder_name = f"generated_imgs_{str_current_datetime}"
+
+        service = self.gdrive_service()
+        folder_id = self.create_and_share_folder(service, drive_folder_name, user_emails)
+
+        if seed != None:
+            generator = torch.Generator("cuda").manual_seed(seed)
+            with torch.no_grad():
+                with torch.autocast("cuda"):
+                    image = self.pipe(caption, generator=generator).images[0]
+        else:
+            with torch.no_grad():
+                with torch.autocast("cuda"):
+                    image = self.pipe(caption).images[0]
+            
+        buf = BytesIO()
+
+        image.save(buf, format='PNG')
+        buf.seek(0)
+        file_metadata = {
+            'name': f'generated_img{str_current_datetime}.png',
+            'parents': [folder_id]
+        }
+        media = MediaIoBaseUpload(buf, mimetype='image/png', resumable=True)
+        service.files().create(body=file_metadata,
+                                                media_body=media,
+                                                fields='id').execute()
+
+        
+    def generate_save_images(self, test_dataset: Dataset, num_images: int = None, user_emails: list[str] = None):
+      """Generate images using model's pipeline on prompts in test dataset and saves images to google drive"""
+          
       print("\n***GENERATING & SAVING IMAGES***")
-      
+
       now = datetime.now()
       str_current_datetime = now.strftime('%Y%m%d_%H%M%S')
       drive_folder_name = f"generated_imgs_{str_current_datetime}"
       
       #self.pipe.eval()
-      service = gdrive_service()
-      folder_id = create_and_share_folder(service, drive_folder_name, user_emails)
+      service = self.gdrive_service()
+      folder_id = self.create_and_share_folder(service, drive_folder_name, user_emails)
             
       if num_images is None: 
         num_images = len(test_dataset)

@@ -11,10 +11,11 @@ def main():
 
   # load and setup model
   model_processor = ModelProcessor("stabilityai/stable-diffusion-3-medium-diffusers")
-  model_processor.generate_save_images(dataset_split["test"], 
-                                       num_images=5, 
-                                       user_emails = ["mkschulz@usc.edu", "alopezlo@usc.edu", "oreynozo@usc.edu"])
-  
+  #model_processor.generate_save_images(dataset_split["test"], 
+  #                                     num_images=5, 
+  #                                     user_emails = ["mkschulz@usc.edu", "alopezlo@usc.edu", "oreynozo@usc.edu"])
+  prompt = "portrait photo of a old warrior chief"
+  model_processor.generate_single_image(prompt, seed=0, user_emails = ["alopezlo@usc.edu"])
   # setup metrics and evaluation loop
   # evaluate and record results
   
