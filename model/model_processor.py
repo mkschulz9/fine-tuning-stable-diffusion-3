@@ -24,7 +24,10 @@ class ModelProcessor:
         # tips if running out of gpu memory: https://huggingface.co/learn/diffusion-course/en/unit3/2#generating-images-from-text
         
         print(f"\nModel loaded: {model_id}")
-
+    
+    def print_compatible_schedulers(self):
+        print(self.pipe.scheduler.compatibles)
+    
     def gdrive_service(self):
         """Google Drive authentication and service setup"""
         SCOPES = ["https://www.googleapis.com/auth/drive"]
