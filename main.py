@@ -5,6 +5,7 @@ def main():
   """Main function to run pipeline"""
   # Analyze, visualize, and split dataset
   data_preprocessor = DataPreprocessor("TheFusion21/PokemonCards")
+  data_preprocessor.reduce_caption_to_first_sentence()
   data_preprocessor.analyze_data()
   data_preprocessor.visualize_data()
   dataset_split = data_preprocessor.remove_columns_split_dataset(column_names=["name", "hp", "set_name"])

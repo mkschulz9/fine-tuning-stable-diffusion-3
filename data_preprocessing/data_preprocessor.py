@@ -12,6 +12,11 @@ class DataPreprocessor:
         
         print(f"\nDataset loaded: {dataset_id}")
 
+    def reduce_caption_to_first_sentence(self, img):
+        """Reduce caption to first sentence for given image."""
+        reduced_captions = self.dataset.map(lambda img: img['caption'].split('.')[0] + '.')
+        self.dataset['caption'] = reduced_captions
+
     def analyze_data(self):
         """Analyze and print information about dataset"""
         print("\n***ANALYZING DATASET***")
