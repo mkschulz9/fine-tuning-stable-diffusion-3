@@ -4,6 +4,10 @@ Welcome ...
 
 ## Environment Setup
 
+We use separate environments for running two models: Stable Diffusion 3 and Stable Diffusion 3 Flash. The instructions for setting up the environments are provided below.
+
+### SD3 Flash
+
 1. We use Miniconda to manage the Python environment. Install Miniconda [here](https://docs.conda.io/en/latest/miniconda.html).
    - To install conda via the command line, you can use the following commands (Linux):
      ```bash
