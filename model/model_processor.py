@@ -13,6 +13,13 @@ class ModelProcessor:
     """Base class tailored for loading and processing data through HuggingFace diffusion models"""
     def __init__(self, model_id: str):
         """Load model from HuggingFace"""
+        torch.set_float32_matmul_precision("high")
+
+        torch._inductor.config.conv_1x1_as_mm = True
+        torch._inductor.config.coordinate_descent_tuning = True
+        torch._inductor.config.epilogue_fusion = False
+        torch._inductor.config.coordinate_descent_check_all_directions = True
+
         self.pipe = DiffusionPipeline.from_pretrained(
             model_id,
             token=os.getenv("HF_TOKEN"),
@@ -20,6 +27,14 @@ class ModelProcessor:
             #force_download=True
         ).to("cuda")  # Move model to GPU (faster processing)
         
+        self.pipe.set_progress_bar_config(disable=True)
+
+        self.pipe.transformer.to(memory_format=torch.channels_last)
+        self.pipe.vae.to(memory_format=torch.channels_last)
+
+        self.pipe.transformer = torch.compile(self.pipe.transformer, mode="max-autotune", fullgraph=True)
+        self.pipe.vae.decode = torch.compile(self.pipe.vae.decode, mode="max-autotune", fullgraph=True)
+
         # self.pipe.enable_attention_slicing() # Enable if we need to save some memory in exchange for small speed decrease (https://huggingface.co/docs/diffusers/main/en/api/pipelines/stable_diffusion/image_variation#diffusers.StableDiffusionImageVariationPipeline.enable_attention_slicing)
         # tips if running out of gpu memory: https://huggingface.co/learn/diffusion-course/en/unit3/2#generating-images-from-text
         
@@ -79,11 +94,11 @@ class ModelProcessor:
             generator = torch.Generator("cuda").manual_seed(seed)
             with torch.no_grad():
                 with torch.autocast("cuda"):
-                    image = self.pipe(caption, generator=generator).images[0]
+                    image = self.pipe(caption, num_inference_steps=20, generator=generator).images[0]
         else:
             with torch.no_grad():
                 with torch.autocast("cuda"):
-                    image = self.pipe(caption).images[0]
+                    image = self.pipe(caption, num_inference_steps=20).images[0]
             
         buf = BytesIO()
 
