@@ -37,7 +37,18 @@ class DataPreprocessor:
         plt.imshow(img)
         plt.axis('off')
         plt.show()
-        
+
+    def first_sentence(self, text):
+        """Extract the first sentence from text."""
+        sentence = text.split('.')[0]
+        return sentence if sentence else text
+
+    def reduce_captions(self):
+        """Reduce all captions to their first sentence."""
+
+        print("\n***REDUCING CAPTIONS TO FIRST SENTENCE***")
+        self.dataset = self.dataset.map(lambda example: {'caption': self.first_sentence(example['caption'])+'.'})
+
     def remove_columns_split_dataset(self, train_size: float = 0.8, column_names: list[str] = None):
         """Remove columns & split dataset into train and test sets"""
         print("\n***REMOVING COLUMNS & SPLITTING DATASET***")
