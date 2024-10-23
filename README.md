@@ -2,9 +2,11 @@
 
 Welcome ...
 
-## Getting Started
+## Environment Setup
 
-### Environment Setup
+We use separate environments for running two models: Stable Diffusion 3 and Stable Diffusion 3 Flash. The instructions for setting up the environments are provided below.
+
+### SD3 Flash
 
 1. We use Miniconda to manage the Python environment. Install Miniconda [here](https://docs.conda.io/en/latest/miniconda.html).
    - To install conda via the command line, you can use the following commands (Linux):
@@ -45,6 +47,32 @@ Welcome ...
    conda env export > environment.yml
    ```
 
-## Conventional Commits
+## Getting Started on a Task:
 
-Please format commit messages according to Angular's [Conventional Commits](https://github.com/angular/angular/blob/22b96b9/CONTRIBUTING.md#-commit-message-guidelines).
+- **Before Starting:**
+
+  - Discuss work items in team meetings.
+
+- **Starting Work:**
+
+  - **IMPORTANT**: Switch to the `main` branch (if not already) and sync the
+    latest changes.
+  - Create a branch from `main`; the branch's name should follow the convention
+    below:
+    > [name using dashes as spaces]
+  - Switch to the new branch to begin your work.
+
+- **Development Process:**
+
+  - Commit and push changes frequently, adhering to
+    [Conventional Commits](https://github.com/angular/angular/blob/22b96b9/CONTRIBUTING.md#-commit-message-guidelines).
+  - Start a pull request early; begin the request's name with "DRAFT:"
+  - Write and run unit tests (if applicable).
+  - Resolve merge conflicts promptly.
+
+- **Finishing Up:**
+  - Clean and review your code.
+  - Ensure all tests pass (if applicable).
+  - Finalize the pull request, remove "DRAFT:" from the name, and request code
+    reviews.
+  - Implement review feedbacks and merge upon approval.
