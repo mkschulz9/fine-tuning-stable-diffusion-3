@@ -1,36 +1,54 @@
 import os, torch, json
 from tqdm import tqdm
 from datetime import datetime
-from diffusers import DiffusionPipeline
 from datasets import Dataset
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 from io import BytesIO
 from googleapiclient.http import MediaIoBaseUpload
+from diffusers import StableDiffusion3Pipeline, SD3Transformer2DModel, FlashFlowMatchEulerDiscreteScheduler
+from peft import PeftModel
 
 
-class ModelProcessor:
+class SD3Flash:
     """Base class tailored for loading and processing data through HuggingFace diffusion models"""
-    def __init__(self, model_id: str):
+    def __init__(self):
         """Load model from HuggingFace"""
-        self.pipe = DiffusionPipeline.from_pretrained(
-            model_id,
-            token=os.getenv("HF_TOKEN"),
-            torch_dtype=torch.float16,  # Mixed precision (faster inference)
-            #force_download=True
-        ).to("cuda")  # Move model to GPU (faster processing)
+        # Load LoRA
+        transformer = SD3Transformer2DModel.from_pretrained(
+            "stabilityai/stable-diffusion-3-medium-diffusers",
+            subfolder="transformer",
+            torch_dtype=torch.float16,
+        )
+        transformer = PeftModel.from_pretrained(transformer, "jasperai/flash-sd3")
+
+
+        # Pipeline
+        self.pipe = StableDiffusion3Pipeline.from_pretrained(
+            "stabilityai/stable-diffusion-3-medium-diffusers",
+            transformer=transformer,
+            torch_dtype=torch.float16,
+            text_encoder_3=None,
+            tokenizer_3=None
+        )
+
+        # Scheduler
+        self.pipe.scheduler = FlashFlowMatchEulerDiscreteScheduler.from_pretrained(
+          "stabilityai/stable-diffusion-3-medium-diffusers",
+          subfolder="scheduler",
+        )
+
+        self.pipe.to("cuda")
+
         
-        # self.pipe.enable_attention_slicing() # Enable if we need to save some memory in exchange for small speed decrease (https://huggingface.co/docs/diffusers/main/en/api/pipelines/stable_diffusion/image_variation#diffusers.StableDiffusionImageVariationPipeline.enable_attention_slicing)
-        # tips if running out of gpu memory: https://huggingface.co/learn/diffusion-course/en/unit3/2#generating-images-from-text
-        
-        print(f"\nModel loaded: {model_id}")
+        print(f"\nModel loaded")
         
     def generate_save_images(self, test_dataset: Dataset, num_images: int = None, user_emails: list[str] = None):
       """Generate images using model's pipeline on prompts in test dataset and saves images to google drive"""
       def gdrive_service():
         """Google Drive authentication and service setup"""
         SCOPES = ["https://www.googleapis.com/auth/drive"]
-        SERVICE_ACCOUNT_FILE = "./model/gdrive-service.json"
+        SERVICE_ACCOUNT_FILE = "./models/gdrive-service.json"
 
         credentials = Credentials.from_service_account_file(
             SERVICE_ACCOUNT_FILE, scopes=SCOPES)
@@ -90,12 +108,14 @@ class ModelProcessor:
       img_ids = {}
       
       for idx, sample in enumerate(tqdm(test_dataset, total=num_images)):
+        if idx >= num_images:
+          break
         sample_caption = sample['caption']
         sample_id = sample['id']
             
         with torch.no_grad():
             with torch.autocast("cuda"):
-                image = self.pipe(sample_caption).images[0]
+                image = self.pipe(sample_caption, num_inference_steps=8, guidance_scale=0).images[0]
             
         buf = BytesIO()
         image.save(buf, format='PNG')
