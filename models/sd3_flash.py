@@ -1,16 +1,16 @@
-import os, torch, json
+import os, torch, json, tracemalloc, time, sys
 from tqdm import tqdm
 from datetime import datetime
-import time
 from datasets import Dataset
-from google.oauth2.service_account import Credentials
-from googleapiclient.discovery import build
 from io import BytesIO
 from googleapiclient.http import MediaIoBaseUpload
-from diffusers import StableDiffusion3Pipeline, SD3Transformer2DModel, FlashFlowMatchEulerDiscreteScheduler
+from diffusers import StableDiffusion3Pipeline, SD3Transformer2DModel, FlashFlowMatchEulerDiscreteScheduler, models
 from peft import PeftModel
-import tracemalloc
 
+project_root = "/content/fine-tuning-stable-diffusion-3/models"
+sys.path.append(project_root)
+
+from utils import gdrive_service, create_and_share_folder, create_subfolder
 
 class SD3Flash:
     """Base class tailored for loading and processing data through HuggingFace diffusion models"""
@@ -50,53 +50,7 @@ class SD3Flash:
         self.memory_used = end_current - start_current
         print(f"\nModel loaded")
         
-    def generate_save_images(self, test_dataset: Dataset, num_images: int = None, user_emails: list[str] = None):
-      """Generate images using model's pipeline on prompts in test dataset and saves images to google drive"""
-      def gdrive_service():
-        """Google Drive authentication and service setup"""
-        SCOPES = ["https://www.googleapis.com/auth/drive"]
-        SERVICE_ACCOUNT_FILE = "./models/gdrive-service.json"
-
-        credentials = Credentials.from_service_account_file(
-            SERVICE_ACCOUNT_FILE, scopes=SCOPES)
-        
-        service = build("drive", "v3", credentials=credentials)
-        return service
-    
-      def create_and_share_folder(service, folder_name, user_emails, parent_id=None):
-        """Create new folder in Google Drive (Cloud Service) and share it with specified users"""
-        folder_metadata = {
-            'name': folder_name,
-            'mimeType': 'application/vnd.google-apps.folder',
-            'parents': [parent_id] if parent_id else []
-        }
-        folder = service.files().create(body=folder_metadata, fields='id').execute()
-
-        if user_emails:
-            for user_email in user_emails:
-                user_permission = {
-                    'type': 'user',
-                    'role': 'writer',
-                    'emailAddress': user_email
-                }
-                service.permissions().create(
-                    fileId=folder.get('id'),
-                    body=user_permission,
-                    fields='id',
-                ).execute()
-
-        return folder.get('id')
-    
-      def create_subfolder(service, parent_folder_id, subfolder_name):
-        """Create a subfolder within a given parent folder."""
-        subfolder_metadata = {
-            'name': subfolder_name,
-            'mimeType': 'application/vnd.google-apps.folder',
-            'parents': [parent_folder_id]
-        }
-        subfolder = service.files().create(body=subfolder_metadata, fields='id').execute()
-        return subfolder.get('id')
-    
+    def generate_save_images(self, test_dataset: Dataset, num_images: int = None, user_emails: list[str] = None, batch_size: int = 20):
       print("\n***GENERATING, SAVING IMAGES & IDs***")
       
       now = datetime.now()
@@ -104,7 +58,6 @@ class SD3Flash:
       drive_folder_name = f"generated_imgs_{str_current_datetime}"
       imgs_subfolder_name = 'generated_imgs'
       
-      #self.pipe.eval()
       service = gdrive_service()
       drive_folder_id = create_and_share_folder(service, drive_folder_name, user_emails)
       imgs_subfolder_id = create_subfolder(service, drive_folder_id, imgs_subfolder_name)
@@ -112,14 +65,28 @@ class SD3Flash:
       if num_images is None: 
         num_images = len(test_dataset)
         
-      json_data = {}
-      json_data["Memory"] = self.memory_used
+      data = {}
+      data["model_load_memory_used"] = self.memory_used
+
+      # Create data.json initially
+      data_content = json.dumps(data, indent=4)
+      data_buf = BytesIO(data_content.encode('utf-8'))
+      data_buf.seek(0)
+      
+      data_file_metadata = {
+        'name': 'data.json',
+        'parents': [drive_folder_id]
+      }
+      data_media = MediaIoBaseUpload(data_buf, mimetype='application/json', resumable=True)
+      file = service.files().create(body=data_file_metadata, media_body=data_media, fields='id').execute()
+      data_file_id = file.get('id')
+
       for idx, sample in enumerate(tqdm(test_dataset, total=num_images)):
         if idx >= num_images:
           break
         sample_caption = sample['caption']
         sample_id = sample['id']
-
+        
         start_time = time.time()
         with torch.no_grad():
             with torch.autocast("cuda"):
@@ -137,18 +104,14 @@ class SD3Flash:
         }
         media = MediaIoBaseUpload(buf, mimetype='image/png', resumable=True)
         service.files().create(body=img_metadata,
-                               media_body=media,
-                               fields='id').execute()
-        json_data[idx] = {"ID": sample_id, "seconds": elapsed_time_secs}
-        
-      id_content = json.dumps(json_data, indent=4)
-      id_buf = BytesIO(id_content.encode('utf-8'))
-      id_buf.seek(0)
-      
-      id_file_metadata = {
-        'name': 'inference_data.json',
-        'parents': [drive_folder_id]
-      }
+                              media_body=media,
+                              fields='id').execute()
+        data[idx] = {"id": sample_id, "inference_time": elapsed_time_secs}
 
-      id_media = MediaIoBaseUpload(id_buf, mimetype='application/json', resumable=True)
-      service.files().create(body=id_file_metadata, media_body=id_media, fields='id').execute()
+        if (idx + 1) % batch_size == 0 or (idx + 1) == num_images:
+          data_content = json.dumps(data, indent=4)
+          data_buf = BytesIO(data_content.encode('utf-8'))
+          data_buf.seek(0)
+          
+          data_media = MediaIoBaseUpload(data_buf, mimetype='application/json', resumable=True)
+          service.files().update(fileId=data_file_id, body={'name': 'data.json'}, media_body=data_media).execute()

@@ -5,7 +5,6 @@ def main():
   """Main function to run pipeline"""
   # Analyze, visualize, and split dataset
   data_preprocessor = DataPreprocessor("TheFusion21/PokemonCards")
-  data_preprocessor.reduce_caption_to_first_sentence()
   data_preprocessor.analyze_data()
   data_preprocessor.visualize_data()
   data_preprocessor.reduce_captions()
@@ -15,7 +14,8 @@ def main():
   # load and setup model
   model_processor = SD3Flash()
   model_processor.generate_save_images(dataset_split["test"], 
-                                        num_images=5, 
+                                        num_images=7, 
+                                        batch_size=5,
                                         user_emails = ["mkschulz@usc.edu", "alopezlo@usc.edu", "oreynozo@usc.edu"])
    
 if __name__ == "__main__":
