@@ -1,6 +1,7 @@
 import os, torch, json
 from tqdm import tqdm
 from datetime import datetime
+import time
 from datasets import Dataset
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
@@ -8,12 +9,16 @@ from io import BytesIO
 from googleapiclient.http import MediaIoBaseUpload
 from diffusers import StableDiffusion3Pipeline, SD3Transformer2DModel, FlashFlowMatchEulerDiscreteScheduler
 from peft import PeftModel
+import tracemalloc
 
 
 class SD3Flash:
     """Base class tailored for loading and processing data through HuggingFace diffusion models"""
     def __init__(self):
         """Load model from HuggingFace"""
+        
+        tracemalloc.start()
+        start_current, start_peak = tracemalloc.get_traced_memory()
         # Load LoRA
         transformer = SD3Transformer2DModel.from_pretrained(
             "stabilityai/stable-diffusion-3-medium-diffusers",
@@ -39,8 +44,10 @@ class SD3Flash:
         )
 
         self.pipe.to("cuda")
-
+        end_current, end_peak = tracemalloc.get_traced_memory()
+        tracemalloc.stop()
         
+        self.memory_used = end_current - start_current
         print(f"\nModel loaded")
         
     def generate_save_images(self, test_dataset: Dataset, num_images: int = None, user_emails: list[str] = None):
@@ -105,18 +112,21 @@ class SD3Flash:
       if num_images is None: 
         num_images = len(test_dataset)
         
-      img_ids = {}
-      
+      json_data = {}
+      json_data["Memory"] = self.memory_used
       for idx, sample in enumerate(tqdm(test_dataset, total=num_images)):
         if idx >= num_images:
           break
         sample_caption = sample['caption']
         sample_id = sample['id']
-            
+
+        start_time = time.time()
         with torch.no_grad():
             with torch.autocast("cuda"):
                 image = self.pipe(sample_caption, num_inference_steps=8, guidance_scale=0).images[0]
-            
+        end_time = time.time()
+        elapsed_time_secs = (end_time - start_time)
+
         buf = BytesIO()
         image.save(buf, format='PNG')
         buf.seek(0)
@@ -129,14 +139,14 @@ class SD3Flash:
         service.files().create(body=img_metadata,
                                media_body=media,
                                fields='id').execute()
-        img_ids[idx] = sample_id
+        json_data[idx] = {"ID": sample_id, "seconds": elapsed_time_secs}
         
-      id_content = json.dumps(img_ids, indent=4)
+      id_content = json.dumps(json_data, indent=4)
       id_buf = BytesIO(id_content.encode('utf-8'))
       id_buf.seek(0)
       
       id_file_metadata = {
-        'name': 'img_ids.json',
+        'name': 'inference_data.json',
         'parents': [drive_folder_id]
       }
 
