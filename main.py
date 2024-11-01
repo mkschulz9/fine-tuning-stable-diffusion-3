@@ -10,11 +10,11 @@ def main():
   data_preprocessor.reduce_captions()
   data_preprocessor.visualize_data()
   dataset_split = data_preprocessor.remove_columns_split_dataset(column_names=["name", "hp", "set_name"])
-
+  #print(len(dataset_split["test"]))
   # load and setup model
   model_processor = SD3Flash()
   model_processor.generate_save_images(dataset_split["test"], 
-                                        num_images=7, 
+                                        num_images=len(dataset_split["test"]), 
                                         batch_size=5,
                                         user_emails = ["mkschulz@usc.edu", "alopezlo@usc.edu", "oreynozo@usc.edu"])
    

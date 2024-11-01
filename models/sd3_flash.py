@@ -12,6 +12,7 @@ sys.path.append(project_root)
 
 from utils import gdrive_service, create_and_share_folder, create_subfolder
 
+
 class SD3Flash:
     """Base class tailored for loading and processing data through HuggingFace diffusion models"""
     def __init__(self):
@@ -44,6 +45,7 @@ class SD3Flash:
         )
 
         self.pipe.to("cuda")
+        self.pipe.set_progress_bar_config(disable=True)
         end_current, end_peak = tracemalloc.get_traced_memory()
         tracemalloc.stop()
         
@@ -81,7 +83,7 @@ class SD3Flash:
       file = service.files().create(body=data_file_metadata, media_body=data_media, fields='id').execute()
       data_file_id = file.get('id')
 
-      for idx, sample in enumerate(tqdm(test_dataset, total=num_images)):
+      for idx, sample in enumerate(tqdm(test_dataset, total=num_images, disable=True)):
         if idx >= num_images:
           break
         sample_caption = sample['caption']
@@ -90,7 +92,7 @@ class SD3Flash:
         start_time = time.time()
         with torch.no_grad():
             with torch.autocast("cuda"):
-                image = self.pipe(sample_caption, num_inference_steps=8, guidance_scale=0).images[0]
+                image = self.pipe(sample_caption, num_inference_steps=4, guidance_scale=0).images[0]
         end_time = time.time()
         elapsed_time_secs = (end_time - start_time)
 
