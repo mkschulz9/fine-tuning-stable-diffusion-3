@@ -154,9 +154,9 @@ class Metrics:
         self.compute_psnr()
         self.compute_ssim(image_value_range)
         self.compute_lpips(network_type)
-        metrics = ['CLIP', 'Inception Score', 'FID', 'KID', 'PSNR', 'SSIM', 'LPIPS']
-        metric_scores = [self.clip_score, self.inception_score, self.fid_score, 
-        self.kid_score, self.psnr_score, self.ssim_score, self.lpips_score]
+        metrics = ['CLIP', 'Inception Score - Mean', 'Inception Score - Standard Deviation', 'FID', 'KID - Mean', 'KID - Standard Deviation', 'PSNR', 'SSIM', 'LPIPS']
+        metric_scores = [self.clip_score, self.inception_score.item()[0], self.inception_score.item()[1], self.fid_score.item(), 
+        self.kid_score.item()[0], self.kid_score.item()[1], self.psnr_score.item(), self.ssim_score.item(), self.lpips_score.item()]
         metric_scores_df = pd.DataFrame({'Metric': metrics, 'Score': metric_scores})
         metric_scores_df.to_csv(output_csv, index=False)
 
