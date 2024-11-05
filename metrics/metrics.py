@@ -157,7 +157,7 @@ class Metrics:
         metrics = ['CLIP', 'Inception Score', 'FID', 'KID', 'PSNR', 'SSIM', 'LPIPS']
         metric_scores = [self.clip_score, self.inception_score, self.fid_score, 
         self.kid_score, self.psnr_score, self.ssim_score, self.lpips_score]
-        metric_scores_df = pd.DataFrame({'Metric': metrics, 'Score': scores})
+        metric_scores_df = pd.DataFrame({'Metric': metrics, 'Score': metric_scores})
         metric_scores_df.to_csv(output_csv, index=False)
 
 
