@@ -64,9 +64,11 @@ class Metrics:
             self.create_generated_images_stack()
         inception_score = InceptionScore()
         inception_score.update(self.generated_images_stack)
-        self.inception_score = inception_score.compute()
-        print(f"Inception Score (IS) - Mean: {self.inception_score[0]}")
-        print(f"Inception Score (IS) - Standard Deviation: {self.inception_score[1]}")
+        is_compute = inception_score.compute()
+        self.inception_score_mean = is_compute[0].item()
+        self.inception_score_stdev = is_compute[1].item()
+        print(f"Inception Score (IS) - Mean: {self.inception_score_mean}")
+        print(f"Inception Score (IS) - Standard Deviation: {self.inception_score_stdev}")
     
     """
     """
@@ -78,7 +80,7 @@ class Metrics:
         fid = FrechetInceptionDistance()
         fid.update(self.generated_images_stack, real=False)
         fid.update(self.ground_truth_images_stack, real=True)
-        self.fid_score = fid.compute()
+        self.fid_score = fid.compute().item()
         print(f"FID Score: {self.fid_score}")
     
     """
@@ -91,9 +93,11 @@ class Metrics:
         kid = KernelInceptionDistance(subset_size=2)
         kid.update(self.generated_images_stack, real=False)
         kid.update(self.ground_truth_images_stack, real=True)
-        self.kid_score = kid.compute()
-        print(f"Kernel Inception Distance (KID) Score - Mean: {self.kid_score[0]}")
-        print(f"Kernel Inception Distance (KID) Score - Standard Deviation: {self.kid_score[1]}")
+        kid_compute = kid.compute()
+        self.kid_score_mean = kid_compute[0].item()
+        self.kid_score_stdev = kid_compute[1].item()
+        print(f"Kernel Inception Distance (KID) Score - Mean: {self.kid_score_mean}")
+        print(f"Kernel Inception Distance (KID) Score - Standard Deviation: {self.kid_score_stdev}")
     
     """
     """
@@ -101,7 +105,7 @@ class Metrics:
         if self.resized_generated_images_stack_transform == None:
             self.resize_generated_images_stack()
         psnr = PeakSignalNoiseRatio()
-        self.psnr_score = psnr(self.resized_generated_images_stack_transform, self.ground_truth_images_stack)
+        self.psnr_score = psnr(self.resized_generated_images_stack_transform, self.ground_truth_images_stack).item()
         print(f"Peak Signal to Noise Ratio (PSNR) Score: {self.psnr_score}")
     
     """
@@ -112,7 +116,7 @@ class Metrics:
             self.resize_generated_images_stack()
         ssim = StructuralSimilarityIndexMeasure(data_range = image_value_range)
         self.ssim_score = ssim(self.resized_generated_images_stack_transform.to(torch.float),
-                  self.ground_truth_images_stack.to(torch.float))
+                  self.ground_truth_images_stack.to(torch.float)).item()
         print(f"Sturctural Similarity Index Measure (SSIM) Score: {self.ssim_score}")
     
     """
@@ -132,7 +136,7 @@ class Metrics:
             self.resize_generated_images_stack()
         lpips = LearnedPerceptualImagePatchSimilarity(net_type = network_type, normalize = True)
         self.lpips_score = lpips(self.resized_generated_images_stack_transform.to(torch.float) / 255.0,
-                            self.ground_truth_images_stack.to(torch.float) / 255.0)
+                            self.ground_truth_images_stack.to(torch.float) / 255.0).item()
         print(f"Learned Perceptual Image Patch Similarity (LPIPS) Score: {self.lpips_score}")
     
     """
@@ -155,8 +159,8 @@ class Metrics:
         self.compute_ssim(image_value_range)
         self.compute_lpips(network_type)
         metrics = ['CLIP', 'Inception Score - Mean', 'Inception Score - Standard Deviation', 'FID', 'KID - Mean', 'KID - Standard Deviation', 'PSNR', 'SSIM', 'LPIPS']
-        metric_scores = [self.clip_score, self.inception_score[0].item(), self.inception_score[1].item(), self.fid_score.item(), 
-        self.kid_score[0].item(), self.kid_score[1].item(), self.psnr_score.item(), self.ssim_score.item(), self.lpips_score.item()]
+        metric_scores = [self.clip_score, self.inception_score_mean, self.inception_score_stdev, self.fid_score, 
+        self.kid_score_mean, self.kid_score_stdev, self.psnr_score, self.ssim_score, self.lpips_score]
         metric_scores_df = pd.DataFrame({'Metric': metrics, 'Score': metric_scores})
         metric_scores_df.to_csv(output_csv, index=False)
 
