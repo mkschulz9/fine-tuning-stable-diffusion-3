@@ -1,8 +1,8 @@
-import random, requests
+import random, requests, os
 import matplotlib.pyplot as plt
 from PIL import Image
 from io import BytesIO
-from datasets import load_dataset
+from datasets import load_dataset, Dataset
 
 class DataPreprocessor:
     """Base class for processing HuggingFace datasets"""
@@ -61,5 +61,28 @@ class DataPreprocessor:
         shuffled_dataset = self.dataset["train"].shuffle()
         dataset_split = shuffled_dataset.train_test_split(train_size=train_size)
         print(f"Columns removed and dataset successfully split: {dataset_split}")
-                
+
         return dataset_split
+
+    def create_textual_inversion_dataset(self, train_dataset, size=5):
+        print("\n***CREATING TEXTUAL INVERSION DATASET***")
+        save_dir = f"../datasets/{size}_imgs"
+        
+        os.makedirs(save_dir, exist_ok=True)
+
+        for idx, sample in enumerate(train_dataset):
+            if idx >= size:
+                break
+            image_path = os.path.join(save_dir, f"{sample['id']}.jpg")
+            # caption_path = os.path.join(save_dir, f"{sample['id']}.txt")
+
+            response = requests.get(sample["image_url"])
+            image = Image.open(BytesIO(response.content))
+
+            if image.mode == 'RGBA':
+                image = image.convert('RGB')
+            image.save(image_path)
+
+            # with open(caption_path, 'w') as f:
+            #     f.write(sample["caption"])
+        print("***DATASET SAVED TO DATASETS DIRECTORY***")

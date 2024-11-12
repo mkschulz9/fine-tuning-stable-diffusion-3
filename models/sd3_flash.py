@@ -12,7 +12,6 @@ sys.path.append(project_root)
 
 from utils import gdrive_service, create_and_share_folder, create_subfolder
 
-
 class SD3Flash:
     """Base class tailored for loading and processing data through HuggingFace diffusion models"""
     def __init__(self):
@@ -27,7 +26,6 @@ class SD3Flash:
             torch_dtype=torch.float16,
         )
         transformer = PeftModel.from_pretrained(transformer, "jasperai/flash-sd3")
-
 
         # Pipeline
         self.pipe = StableDiffusion3Pipeline.from_pretrained(
