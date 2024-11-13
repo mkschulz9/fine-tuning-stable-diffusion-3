@@ -17,8 +17,8 @@ def main():
     lora_model.load_base_model()
     
     # Apply LoRA and fine-tune the model
-    #lora_model.apply_lora()
-    #lora_model.fine_tune(dataset_split["train"], epochs=5, lr=5e-4)
+    lora_model.apply_lora()
+    lora_model.fine_tune(dataset_split["train"], epochs=5, lr=5e-4)
     
     # Save the fine-tuned model
     #lora_model.save_finetuned_model("lora_models/lora_v1")

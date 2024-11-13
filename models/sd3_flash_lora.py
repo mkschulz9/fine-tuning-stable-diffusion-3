@@ -40,8 +40,8 @@ class SD3FlashLora:
         # Move pipeline to GPU
         self.pipe.to("cuda")
 
-        for name, module in self.pipe.transformer.named_modules():
-          print(name)
+        #for name, module in self.pipe.transformer.named_modules():
+        #  print(name)
     
     def apply_lora(self, lora_rank=16, lora_alpha=32, lora_dropout=0.1):
         """Add LoRA layers to the transformer model."""
@@ -53,13 +53,28 @@ class SD3FlashLora:
         lora_config = LoraConfig(
             r=lora_rank,
             lora_alpha=lora_alpha,
-            target_modules=["cross_attention", "self_attention"],
+            target_modules = [
+               # First few blocks for initial feature processing
+              "transformer_blocks.0.attn.to_q", "transformer_blocks.0.attn.to_k", "transformer_blocks.0.attn.to_v",
+              "transformer_blocks.0.attn.add_q_proj", "transformer_blocks.0.attn.add_k_proj", "transformer_blocks.0.attn.add_v_proj",
+              
+              # Middle blocks for feature balancing
+              "transformer_blocks.4.attn.to_q", "transformer_blocks.4.attn.to_k", "transformer_blocks.4.attn.to_v",
+              "transformer_blocks.4.attn.add_q_proj", "transformer_blocks.4.attn.add_k_proj", "transformer_blocks.4.attn.add_v_proj",
+              
+              # Final blocks for high-level structure
+              "transformer_blocks.8.attn.to_q", "transformer_blocks.8.attn.to_k", "transformer_blocks.8.attn.to_v",
+              "transformer_blocks.8.attn.add_q_proj", "transformer_blocks.8.attn.add_k_proj", "transformer_blocks.8.attn.add_v_proj"
+               ],
             lora_dropout=lora_dropout,
         )
 
         # Wrap the transformer with LoRA
         self.pipe.transformer = get_peft_model(self.pipe.transformer, lora_config)
+        if not hasattr(self.pipe.transformer, "get_peft_parameters"):
+          print("Warning: 'get_peft_parameters' method is not available on 'self.pipe.transformer'")
 
+        
     def _load_image_from_url(self, url):
         """Load an image from a URL into a PIL format."""
         response = requests.get(url)
