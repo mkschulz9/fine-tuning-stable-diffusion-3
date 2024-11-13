@@ -85,7 +85,7 @@ else:
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.32.0.dev0")
+# check_min_version("0.32.0.dev0")
 
 logger = get_logger(__name__)
 
@@ -666,13 +666,13 @@ def main():
     vae = AutoencoderKL.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="vae", revision=args.revision, variant=args.variant
     )
-    unet = UNet2DConditionModel.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision, variant=args.variant
-    )
+    # unet = UNet2DConditionModel.from_pretrained(
+    #     args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision, variant=args.variant
+    # )
     transformer = SD3Transformer2DModel.from_pretrained(
         args.pretrained_model_name_or_path,
         subfolder="transformer",
-        torch_dtype=weight_dtype,
+        torch_dtype=torch.float16,
     )
     transformer = PeftModel.from_pretrained(transformer, "jasperai/flash-sd3")
 
