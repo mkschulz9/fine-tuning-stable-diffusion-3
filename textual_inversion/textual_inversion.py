@@ -46,16 +46,20 @@ from transformers import CLIPTextModel, CLIPTokenizer
 import diffusers
 from diffusers import (
     AutoencoderKL,
-    DDPMScheduler,
+    # DDPMScheduler,
     DiffusionPipeline,
     DPMSolverMultistepScheduler,
     StableDiffusionPipeline,
     UNet2DConditionModel,
+    SD3Transformer2DModel,
+    FlashFlowMatchEulerDiscreteScheduler,
+    StableDiffusion3Pipeline,
 )
 from diffusers.optimization import get_scheduler
 from diffusers.utils import check_min_version, is_wandb_available
 from diffusers.utils.hub_utils import load_or_create_model_card, populate_model_card
 from diffusers.utils.import_utils import is_xformers_available
+from peft import PeftModel
 
 
 if is_wandb_available():
@@ -119,7 +123,7 @@ These are textual inversion adaption weights for {base_model}. You can find some
     model_card.save(os.path.join(repo_folder, "README.md"))
 
 
-def log_validation(text_encoder, tokenizer, unet, vae, args, accelerator, weight_dtype, epoch):
+def log_validation(text_encoder, tokenizer, transformer, vae, args, accelerator, weight_dtype, epoch):
     logger.info(
         f"Running validation... \n Generating {args.num_validation_images} images with prompt:"
         f" {args.validation_prompt}."
@@ -129,14 +133,16 @@ def log_validation(text_encoder, tokenizer, unet, vae, args, accelerator, weight
         args.pretrained_model_name_or_path,
         text_encoder=accelerator.unwrap_model(text_encoder),
         tokenizer=tokenizer,
-        unet=unet,
+        transformer=transformer,
         vae=vae,
         safety_checker=None,
         revision=args.revision,
         variant=args.variant,
         torch_dtype=weight_dtype,
+        text_encoder_3=None,
+        tokenizer_3=None,
     )
-    pipeline.scheduler = DPMSolverMultistepScheduler.from_config(pipeline.scheduler.config)
+    pipeline.scheduler = FlashFlowMatchEulerDiscreteScheduler.from_config(pipeline.scheduler.config)
     pipeline = pipeline.to(accelerator.device)
     pipeline.set_progress_bar_config(disable=True)
 
@@ -649,7 +655,11 @@ def main():
         tokenizer = CLIPTokenizer.from_pretrained(args.pretrained_model_name_or_path, subfolder="tokenizer")
 
     # Load scheduler and models
-    noise_scheduler = DDPMScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
+    #noise_scheduler = DDPMScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
+    noise_scheduler = FlashFlowMatchEulerDiscreteScheduler.from_pretrained(
+        args.pretrained_model_name_or_path,
+        subfolder="scheduler",
+    )
     text_encoder = CLIPTextModel.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="text_encoder", revision=args.revision
     )
@@ -659,6 +669,12 @@ def main():
     unet = UNet2DConditionModel.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision, variant=args.variant
     )
+    transformer = SD3Transformer2DModel.from_pretrained(
+        args.pretrained_model_name_or_path,
+        subfolder="transformer",
+        torch_dtype=weight_dtype,
+    )
+    transformer = PeftModel.from_pretrained(transformer, "jasperai/flash-sd3")
 
     # Add the placeholder token in tokenizer
     placeholder_tokens = [args.placeholder_token]
@@ -699,7 +715,7 @@ def main():
 
     # Freeze vae and unet
     vae.requires_grad_(False)
-    unet.requires_grad_(False)
+    transformer.requires_grad_(False)
     # Freeze all parameters except for the token embeddings in text encoder
     text_encoder.text_model.encoder.requires_grad_(False)
     text_encoder.text_model.final_layer_norm.requires_grad_(False)
@@ -708,9 +724,9 @@ def main():
     if args.gradient_checkpointing:
         # Keep unet in train mode if we are using gradient checkpointing to save memory.
         # The dropout cannot be != 0 so it doesn't matter if we are in eval or train mode.
-        unet.train()
+        transformer.train()
         text_encoder.gradient_checkpointing_enable()
-        unet.enable_gradient_checkpointing()
+        transformer.enable_gradient_checkpointing()
 
     if args.enable_xformers_memory_efficient_attention:
         if is_xformers_available():
@@ -721,7 +737,7 @@ def main():
                 logger.warning(
                     "xFormers 0.0.16 cannot be used for training in some GPUs. If you observe problems during training, please update xFormers to at least 0.0.17. See https://huggingface.co/docs/diffusers/main/en/optimization/xformers for more details."
                 )
-            unet.enable_xformers_memory_efficient_attention()
+            transformer.enable_xformers_memory_efficient_attention()
         else:
             raise ValueError("xformers is not available. Make sure it is installed correctly")
 
@@ -785,20 +801,20 @@ def main():
 
     text_encoder.train()
     # Prepare everything with our `accelerator`.
-    text_encoder, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
-        text_encoder, optimizer, train_dataloader, lr_scheduler
+    text_encoder, transformer, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
+        text_encoder, transformer, optimizer, train_dataloader, lr_scheduler
     )
 
     # For mixed precision training we cast all non-trainable weigths (vae, non-lora text_encoder and non-lora unet) to half-precision
     # as these weights are only used for inference, keeping weights in full precision is not required.
-    weight_dtype = torch.float32
+    weight_dtype = torch.float16
     if accelerator.mixed_precision == "fp16":
         weight_dtype = torch.float16
     elif accelerator.mixed_precision == "bf16":
         weight_dtype = torch.bfloat16
 
     # Move vae and unet to device and cast to weight_dtype
-    unet.to(accelerator.device, dtype=weight_dtype)
+    transformer.to(accelerator.device, dtype=weight_dtype)
     vae.to(accelerator.device, dtype=weight_dtype)
 
     # We need to recalculate our total training steps as the size of the training dataloader may have changed.
@@ -887,7 +903,7 @@ def main():
                 encoder_hidden_states = text_encoder(batch["input_ids"])[0].to(dtype=weight_dtype)
 
                 # Predict the noise residual
-                model_pred = unet(noisy_latents, timesteps, encoder_hidden_states).sample
+                model_pred = transformer(noisy_latents, timesteps, encoder_hidden_states).sample
 
                 # Get the target for loss depending on the prediction type
                 if noise_scheduler.config.prediction_type == "epsilon":
@@ -963,7 +979,7 @@ def main():
 
                     if args.validation_prompt is not None and global_step % args.validation_steps == 0:
                         images = log_validation(
-                            text_encoder, tokenizer, unet, vae, args, accelerator, weight_dtype, epoch
+                            text_encoder, tokenizer, transformer, vae, args, accelerator, weight_dtype, epoch
                         )
 
             logs = {"loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
@@ -981,11 +997,11 @@ def main():
         else:
             save_full_model = args.save_as_full_pipeline
         if save_full_model:
-            pipeline = StableDiffusionPipeline.from_pretrained(
+            pipeline = StableDiffusion3Pipeline.from_pretrained(
                 args.pretrained_model_name_or_path,
                 text_encoder=accelerator.unwrap_model(text_encoder),
                 vae=vae,
-                unet=unet,
+                transformer=transformer,
                 tokenizer=tokenizer,
             )
             pipeline.save_pretrained(args.output_dir)
