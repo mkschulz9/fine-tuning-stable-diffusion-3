@@ -893,35 +893,46 @@ def main():
                 bsz = latents.shape[0]
                 # Sample a random timestep for each image
                 timesteps = torch.randint(0, noise_scheduler.config.num_train_timesteps, (bsz,), device=latents.device)
-                timesteps = timesteps.long()
-
-                # Add noise to the latents according to the noise magnitude at each timestep
-                # (this is the forward diffusion process)
-                noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
+                timesteps = timesteps.to(dtype=latents.dtype)
 
                 # Get the text embedding for conditioning
                 encoder_hidden_states = text_encoder(batch["input_ids"])[0].to(dtype=weight_dtype)
 
-                # Predict the noise residual
-                model_pred = transformer(noisy_latents, timesteps, encoder_hidden_states).sample
+                # Predict the noise residual using the transformer
+                model_output = transformer(
+                    hidden_states=latents,
+                    timestep=timesteps,
+                    encoder_hidden_states=encoder_hidden_states,
+                ).sample
+
+                # Use the scheduler's step method to process latents and model output
+                step_result = noise_scheduler.step(
+                    model_output=model_output,
+                    timestep=timesteps,
+                    sample=latents,
+                    return_dict=True
+                )
+
+                # Update latents with the result from step method
+                latents = step_result.sample
 
                 # Get the target for loss depending on the prediction type
                 if noise_scheduler.config.prediction_type == "epsilon":
-                    target = noise
+                    target = noise  # Adjust as needed if your scheduler deals with noise differently
                 elif noise_scheduler.config.prediction_type == "v_prediction":
                     target = noise_scheduler.get_velocity(latents, noise, timesteps)
                 else:
                     raise ValueError(f"Unknown prediction type {noise_scheduler.config.prediction_type}")
 
-                loss = F.mse_loss(model_pred.float(), target.float(), reduction="mean")
-
+                # Compute loss
+                loss = F.mse_loss(model_output.float(), target.float(), reduction="mean")
                 accelerator.backward(loss)
 
                 optimizer.step()
                 lr_scheduler.step()
                 optimizer.zero_grad()
 
-                # Let's make sure we don't update any embedding weights besides the newly added token
+                # Ensure no updates are made to embedding weights outside of tokens
                 index_no_updates = torch.ones((len(tokenizer),), dtype=torch.bool)
                 index_no_updates[min(placeholder_token_ids) : max(placeholder_token_ids) + 1] = False
 
