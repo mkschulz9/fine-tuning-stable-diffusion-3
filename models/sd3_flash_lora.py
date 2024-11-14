@@ -14,6 +14,7 @@ class SD3FlashLora:
         """Initialize the model handler without loading the model immediately."""
         self.model_name = model_name
         self.pipe = None  # Placeholder for the pipeline
+        self.active_layers = {}  # Dictionary to track active layers during forward pass
 
     def load_base_model(self):
         """Load the base model and initialize the pipeline."""
@@ -62,7 +63,7 @@ class SD3FlashLora:
         # Ensure the base model is loaded
         if self.pipe is None:
             self.load_base_model()
-
+        
         # Configure LoRA
         lora_config = LoraConfig(
             r=lora_rank,
@@ -127,6 +128,18 @@ class SD3FlashLora:
                 #print(f" - grad_fn: {param.grad_fn}")
                 #print(f" - Current Gradient: {param.grad if param.grad is not None else 'No gradient yet'}\n")
 
+    def register_hooks(self):
+        """Register forward hooks to track active layers."""
+        def forward_hook(module, input, output):
+            """Hook function to track layer activations."""
+            layer_name = module.__class__.__name__
+            self.active_layers[layer_name] = self.active_layers.get(layer_name, 0) + 1
+            #print(f"Layer activated: {layer_name}")
+
+        # Attach hooks to all modules in the transformer
+        for name, module in self.pipe.transformer.named_modules():
+            module.register_forward_hook(forward_hook)
+    
     def fine_tune(self, dataset, epochs=1, lr=5e-4):
         """Fine-tune the model with the provided dataset."""
         # Ensure LoRA layers are applied
@@ -142,6 +155,9 @@ class SD3FlashLora:
         #print("LORA PARAMS 1: ", lora_params)
         optimizer = AdamW(lora_params, lr=lr)
         
+        # Register hooks to track which layers are active
+        self.register_hooks()
+
         #self._print_lora_params_state("LoRA Parameters State Before Training")
 
         for epoch in range(epochs):
@@ -185,15 +201,15 @@ class SD3FlashLora:
               '''for name, param in self.pipe.transformer.named_parameters():
                   if "lora" in name and param.requires_grad:
                       print(f"{name} - First few values before step: {param.data.flatten()[:5]}")
-''' 
-              self._print_lora_params_state("LoRA Parameters State Before loss back")
+              ''' 
+              #self._print_lora_params_state("LoRA Parameters State Before loss back")
 
               # Backpropagation and optimization for LoRA parameters only
               optimizer.zero_grad()
               loss.backward()
               optimizer.step()
 
-              self._print_lora_params_state("LoRA Parameters State AFTER loss back")
+              #self._print_lora_params_state("LoRA Parameters State AFTER loss back")
               ''' 
               # After step, check if LoRA parameters changed
               for name, param in self.pipe.transformer.named_parameters():
@@ -202,7 +218,11 @@ class SD3FlashLora:
               '''
 
             print(f"Epoch [{epoch+1}/{epochs}] - Loss: {loss.item()}")
-
+        # Print summary of activated layers after fine-tuning
+        print("\n=== Layers Activated During Fine-Tuning ===")
+        for layer, count in self.active_layers.items():
+            print(f"{layer}: Activated {count} times")
+          
     def save_finetuned_model(self, save_path="path_to_save_lora_model"):
         """Save the fine-tuned LoRA parameters."""
         self.pipe.transformer.save_pretrained(save_path)
