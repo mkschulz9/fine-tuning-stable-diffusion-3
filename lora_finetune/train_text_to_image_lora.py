@@ -154,6 +154,13 @@ def parse_args():
         help="Path to pretrained model or model identifier from huggingface.co/models.",
     )
     parser.add_argument(
+        "--pretrained_peft_model",
+        type=str,
+        default=None,
+        required=True,
+        help="Path to pretrained peft model or model identifier from huggingface.co/models. e.g. jasperai/flash-sd3",
+    )
+    parser.add_argument(
         "--revision",
         type=str,
         default=None,
