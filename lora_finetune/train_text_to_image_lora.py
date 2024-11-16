@@ -57,9 +57,6 @@ from peft import PeftModel
 if is_wandb_available():
     import wandb
 
-# Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.32.0.dev0")
-
 logger = get_logger(__name__, log_level="INFO")
 
 
@@ -515,7 +512,7 @@ def main():
         subfolder="transformer",
         torch_dtype=torch.float16
     )
-    transformer = PeftModel.from_pretrained(transformer, args.pretrained_peft_model)
+    #transformer = PeftModel.from_pretrained(transformer, args.pretrained_peft_model)
 
     # freeze parameters of models to save more memory
     transformer.requires_grad_(False)
@@ -547,6 +544,7 @@ def main():
     text_encoder.to(accelerator.device, dtype=weight_dtype)
 
     # Add adapter and make sure the trainable params are in float32.
+    print(type(transformer_lora_config))
     transformer.add_adapter(transformer_lora_config)
     if args.mixed_precision == "fp16":
         # only upcast trainable parameters (LoRA) into fp32
