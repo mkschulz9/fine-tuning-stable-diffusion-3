@@ -3,7 +3,7 @@ from glob import glob
 from itertools import product
 from data_preprocessing.data_preprocessor import DataPreprocessor
 from models.sd3_flash import SD3Flash
-from textual_inversion import TextualInversion
+from fine_tuning.textual_inversion import TextualInversion
 
 def main():
   """Main function to run pipeline"""

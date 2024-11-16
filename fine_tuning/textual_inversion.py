@@ -1,5 +1,7 @@
 import torch
 from torch.utils.data import Dataset, DataLoader
+from torchvision import transforms
+from PIL import Image
 from transformers import AutoTokenizer, CLIPTextModel
 from diffusers import UNet2DConditionModel, AutoencoderKL, DDPMScheduler
 from peft import PeftModel
@@ -71,9 +73,9 @@ class TextualInversion:
         self.embedding_layer = self.text_encoder.get_input_embeddings()
         self.embedding_layer.weight[self.token_id].requires_grad = True
 
-    def train(self, image_paths, prompts, num_epochs=100, lr=1e-4, batch_size=1):
+    def train(self, image_prompt_pairs, num_epochs=100, lr=1e-4, batch_size=1):
         # Create Dataset and DataLoader
-        dataset = TextualInversionDataset(image_paths, prompts, self.tokenizer)
+        dataset = TextualInversionDataset(image_prompt_pairs, self.tokenizer)
         dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
 
         # Prepare Optimizer and Loss Function
@@ -137,9 +139,8 @@ class TextualInversion:
         )
 
 class TextualInversionDataset(Dataset):
-    def __init__(self, image_paths, prompts, tokenizer):
-        self.image_paths = image_paths
-        self.prompts = prompts
+    def __init__(self, image_prompt_pairs, tokenizer):
+        self.image_prompt_pairs = image_prompt_pairs
         self.tokenizer = tokenizer
         self.preprocess = transforms.Compose([
             transforms.Resize((512, 512)),
@@ -147,17 +148,18 @@ class TextualInversionDataset(Dataset):
             transforms.ToTensor(),
             transforms.Normalize([0.5], [0.5]),
         ])
-
+    
     def __len__(self):
-        return len(self.image_paths)
-
+        return len(self.image_prompt_pairs)
+    
     def __getitem__(self, idx):
-        # Load and preprocess image
-        image_path = self.image_paths[idx]
+        image_path, prompt = self.image_prompt_pairs[idx]
+        
+        # Load and preprocess the image
         image = Image.open(image_path).convert("RGB")
         image = self.preprocess(image)
-
-        # Get prompt and tokenize
-        prompt = self.prompts[idx]
+        
+        # Tokenize the prompt
         inputs = self.tokenizer(prompt, return_tensors="pt", padding='max_length', truncation=True, max_length=self.tokenizer.model_max_length)
+        
         return image, inputs
