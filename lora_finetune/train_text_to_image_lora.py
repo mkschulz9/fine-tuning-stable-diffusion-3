@@ -40,7 +40,7 @@ from peft import LoraConfig
 from peft.utils import get_peft_model_state_dict
 from torchvision import transforms
 from tqdm.auto import tqdm
-from transformers import CLIPTextModel, CLIPTokenizer
+from transformers import CLIPTextModelWithProjection, CLIPTokenizer
 
 import diffusers
 from diffusers import StableDiffusion3Pipeline, SD3Transformer2DModel, FlashFlowMatchEulerDiscreteScheduler
@@ -52,6 +52,7 @@ from diffusers.utils.hub_utils import load_or_create_model_card, populate_model_
 from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.torch_utils import is_compiled_module
 
+from peft import PeftModel
 
 if is_wandb_available():
     import wandb
@@ -521,7 +522,7 @@ def main():
     vae.requires_grad_(False)
     text_encoder.requires_grad_(False)
 
-    # For mixed precision training we cast all non-trainable weights (vae, non-lora text_encoder and non-lora unet) to half-precision
+    # For mixed precision training we cast all non-trainable weights (vae, non-lora text_encoder and non-lora transformer) to half-precision
     # as these weights are only used for inference, keeping weights in full precision is not required.
     weight_dtype = torch.float32
     if accelerator.mixed_precision == "fp16":
@@ -529,27 +530,27 @@ def main():
     elif accelerator.mixed_precision == "bf16":
         weight_dtype = torch.bfloat16
 
-    # Freeze the unet parameters before adding adapters
-    for param in unet.parameters():
+    # Freeze the transformer parameters before adding adapters
+    for param in transformer.parameters():
         param.requires_grad_(False)
 
-    unet_lora_config = LoraConfig(
+    transformer_lora_config = LoraConfig(
         r=args.rank,
         lora_alpha=args.rank,
         init_lora_weights="gaussian",
         target_modules=["to_k", "to_q", "to_v", "to_out.0"],
     )
 
-    # Move unet, vae and text_encoder to device and cast to weight_dtype
-    unet.to(accelerator.device, dtype=weight_dtype)
+    # Move transformer, vae and text_encoder to device and cast to weight_dtype
+    transformer.to(accelerator.device, dtype=weight_dtype)
     vae.to(accelerator.device, dtype=weight_dtype)
     text_encoder.to(accelerator.device, dtype=weight_dtype)
 
     # Add adapter and make sure the trainable params are in float32.
-    unet.add_adapter(unet_lora_config)
+    transformer.add_adapter(transformer_lora_config)
     if args.mixed_precision == "fp16":
         # only upcast trainable parameters (LoRA) into fp32
-        cast_training_params(unet, dtype=torch.float32)
+        cast_training_params(transformer, dtype=torch.float32)
 
     if args.enable_xformers_memory_efficient_attention:
         if is_xformers_available():
@@ -560,14 +561,14 @@ def main():
                 logger.warning(
                     "xFormers 0.0.16 cannot be used for training in some GPUs. If you observe problems during training, please update xFormers to at least 0.0.17. See https://huggingface.co/docs/diffusers/main/en/optimization/xformers for more details."
                 )
-            unet.enable_xformers_memory_efficient_attention()
+            transformer.enable_xformers_memory_efficient_attention()
         else:
             raise ValueError("xformers is not available. Make sure it is installed correctly")
 
-    lora_layers = filter(lambda p: p.requires_grad, unet.parameters())
+    lora_layers = filter(lambda p: p.requires_grad, transformer.parameters())
 
     if args.gradient_checkpointing:
-        unet.enable_gradient_checkpointing()
+        transformer.enable_gradient_checkpointing()
 
     # Enable TF32 for faster training on Ampere GPUs,
     # cf https://pytorch.org/docs/stable/notes/cuda.html#tensorfloat-32-tf32-on-ampere-devices
@@ -600,6 +601,7 @@ def main():
         eps=args.adam_epsilon,
     )
 
+    print("HELLO!!!")
     # Get the datasets: you can either provide your own training and evaluation files (see below)
     # or specify a Dataset from the hub (the dataset will be downloaded automatically from the datasets Hub).
 
@@ -730,8 +732,8 @@ def main():
     )
 
     # Prepare everything with our `accelerator`.
-    unet, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
-        unet, optimizer, train_dataloader, lr_scheduler
+    transformer, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
+        transformer, optimizer, train_dataloader, lr_scheduler
     )
 
     # We need to recalculate our total training steps as the size of the training dataloader may have changed.
@@ -801,10 +803,10 @@ def main():
     )
 
     for epoch in range(first_epoch, args.num_train_epochs):
-        unet.train()
+        transformer.train()
         train_loss = 0.0
         for step, batch in enumerate(train_dataloader):
-            with accelerator.accumulate(unet):
+            with accelerator.accumulate(transformer):
                 # Convert images to latent space
                 latents = vae.encode(batch["pixel_values"].to(dtype=weight_dtype)).latent_dist.sample()
                 latents = latents * vae.config.scaling_factor
@@ -842,7 +844,7 @@ def main():
                     raise ValueError(f"Unknown prediction type {noise_scheduler.config.prediction_type}")
 
                 # Predict the noise residual and compute loss
-                model_pred = unet(noisy_latents, timesteps, encoder_hidden_states, return_dict=False)[0]
+                model_pred = transformer(noisy_latents, timesteps, encoder_hidden_states, return_dict=False)[0]
 
                 if args.snr_gamma is None:
                     loss = F.mse_loss(model_pred.float(), target.float(), reduction="mean")
@@ -908,14 +910,14 @@ def main():
                         save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
                         accelerator.save_state(save_path)
 
-                        unwrapped_unet = unwrap_model(unet)
-                        unet_lora_state_dict = convert_state_dict_to_diffusers(
-                            get_peft_model_state_dict(unwrapped_unet)
+                        unwrapped_transformer = unwrap_model(transformer)
+                        transformer_lora_state_dict = convert_state_dict_to_diffusers(
+                            get_peft_model_state_dict(unwrapped_transformer)
                         )
 
-                        StableDiffusionPipeline.save_lora_weights(
+                        StableDiffusion3Pipeline.save_lora_weights(
                             save_directory=save_path,
-                            unet_lora_layers=unet_lora_state_dict,
+                            transformer_lora_layers=transformer_lora_state_dict,
                             safe_serialization=True,
                         )
 
@@ -930,9 +932,9 @@ def main():
         if accelerator.is_main_process:
             if args.validation_prompt is not None and epoch % args.validation_epochs == 0:
                 # create pipeline
-                pipeline = DiffusionPipeline.from_pretrained(
+                pipeline = StableDiffusion3Pipeline.from_pretrained(
                     args.pretrained_model_name_or_path,
-                    unet=unwrap_model(unet),
+                    transformer=unwrap_model(transformer),
                     revision=args.revision,
                     variant=args.variant,
                     torch_dtype=weight_dtype,
@@ -945,20 +947,20 @@ def main():
     # Save the lora layers
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
-        unet = unet.to(torch.float32)
+        transformer = transformer.to(torch.float32)
 
-        unwrapped_unet = unwrap_model(unet)
-        unet_lora_state_dict = convert_state_dict_to_diffusers(get_peft_model_state_dict(unwrapped_unet))
-        StableDiffusionPipeline.save_lora_weights(
+        unwrapped_transformer = unwrap_model(transformer)
+        transformer_lora_state_dict = convert_state_dict_to_diffusers(get_peft_model_state_dict(unwrapped_transformer))
+        StableDiffusion3Pipeline.save_lora_weights(
             save_directory=args.output_dir,
-            unet_lora_layers=unet_lora_state_dict,
+            transformer_lora_layers=transformer_lora_state_dict,
             safe_serialization=True,
         )
 
         # Final inference
         # Load previous pipeline
         if args.validation_prompt is not None:
-            pipeline = DiffusionPipeline.from_pretrained(
+            pipeline = StableDiffusion3Pipeline.from_pretrained(
                 args.pretrained_model_name_or_path,
                 revision=args.revision,
                 variant=args.variant,
